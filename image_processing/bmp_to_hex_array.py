@@ -36,24 +36,6 @@ def publish_output_files(client, img_array):
         with open("../image_codes/output" + str(i) + ".txt", "r") as text_file:
             text_str = text_file.read()
         client.publish("lovebox/Message", payload=text_str, qos=0, retain=False)
-        time.sleep(1)
-
-
-def getInt(tuple):
-    # Convert to 0xrggb
-    r = tuple[0]
-    g = tuple[1]
-    b = tuple[2]
-    rHex = r // 16
-    if (len(str(rHex)) < 2):
-        rHex = "0" + str(rHex)
-    gHex = r // 8
-    if (len(str(gHex)) < 2):
-        gHex = "0" + str(gHex)
-    bHex = r // 16
-    if (len(str(bHex)) < 2):
-        bHex = "0" + str(bHex)
-    return str(rHex) + str(gHex) + str(bHex)
 
 
 if __name__ == '__main__':
