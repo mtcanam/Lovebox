@@ -11,12 +11,7 @@ def get_hex(tuple):
     r = tuple[0]
     g = tuple[1]
     b = tuple[2]
-    rHex = format(r // 16, 'x')
-    gHex = format(r // 8, 'x')
-    if (len(gHex) < 2):
-        gHex = str(0) + gHex
-    bHex = format(r // 16, 'x')
-    return "0x" + (str(rHex) + str(gHex) + str(bHex)).upper()
+    return "0x%0.4X" % ((int(r / 255 * 31) << 11) | (int(g / 255 * 63) << 5) | (int(b / 255 * 31)))
 
 
 def create_output_files():
@@ -26,10 +21,10 @@ def create_output_files():
     out_array = np.empty((img_array.shape[0], img_array.shape[1]), dtype=object)
     out_string = ""
     for i in range(img_array.shape[0]):
-        for j in range(img_array.shape[1]):
+        for j in reversed(range(img_array.shape[1])):
             tuple = img_array[i][j]
             hexString = get_hex(tuple)
-            out_string = out_string + hexString + " "
+            out_string = out_string + hexString
         with open("../image_codes/output" + str(i) + ".txt", "w") as text_file:
             print(str(i) + "\n" + out_string, file=text_file)
         out_string = ""
@@ -40,7 +35,7 @@ def publish_output_files(client, img_array):
     for i in range(img_array.shape[0]):
         with open("../image_codes/output" + str(i) + ".txt", "r") as text_file:
             text_str = text_file.read()
-        client.publish("LoveBox/test", payload=text_str, qos=0, retain=False)
+        client.publish("lovebox/Message", payload=text_str, qos=0, retain=False)
         time.sleep(1)
 
 
@@ -63,7 +58,7 @@ def getInt(tuple):
 
 if __name__ == '__main__':
     client = mqtt.Client("pyclient")
-    client.username_pw_set(username="", password="")
-    client.connect(".cloudmqtt.com", port=, )
+    client.username_pw_set(username="sensor", password="sensor")
+    client.connect("m16.cloudmqtt.com", port=15312)
     img_array = create_output_files()
     publish_output_files(client, img_array)
