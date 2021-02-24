@@ -1,3 +1,4 @@
+/**************************** INCLUDES ********************************************/
 #include <Arduino.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1351.h>
@@ -6,35 +7,46 @@
 #include <WiFiClientSecure.h>
 #include <PubSubClient.h>
 #include <ESP8266mDNS.h>
-#include <WiFiUdp.h>
 #include <ArduinoOTA.h>
-#include <ArduinoJson.h>
 #include <EEPROM.h>
 #include <Servo.h>
-
 #include "credentials.h"
 
-/**************************** FOR OTA **************************************************/
+
+/******************************** OTA **************************************************/
 #define SENSORNAME "lovebox"
 #define OTApassword "OTAPass" // change this to whatever password you want to use when you upload OTA
 #define OTAport 8266
 
-/************* MQTT TOPICS (change these topics as you wish)  **************************/
-#define message_topic "lovebox/Message"
 
-/************************ Screen Settings **********************************************/
+/******************************* MQTT **************************************************/
+#define message_topic "lovebox/Message"
+#define MQTT_MAX_PACKET_SIZE 512
+
+
+/******************************* WIFI **************************************************/
+WiFiClient espClient;
+PubSubClient client(espClient);
+
+
+/******************************* LIGHT SENSOR  *****************************************/
+#define LS_PIN A0
+#define POWER 4
+
+
+/********************************* SCREEN **********************************************/
 // Screen dimensions
 #define SCREEN_WIDTH  128
 #define SCREEN_HEIGHT 128
 
-// The SSD1351 is connected like this (plus VCC plus GND)
+// Pin Settings
 const uint8_t   OLED_pin_scl_sck        = 14;
 const uint8_t   OLED_pin_sda_mosi       = 13;
 const uint8_t   OLED_pin_cs_ss          = 15;
 const uint8_t   OLED_pin_res_rst        = 5;
 const uint8_t   OLED_pin_dc_rs          = 4;
 
-// SSD1331 color definitions
+// Color Definitions
 const uint16_t  OLED_Color_Black        = 0x0000;
 const uint16_t  OLED_Color_Blue         = 0x001F;
 const uint16_t  OLED_Color_Red          = 0xF800;
@@ -44,12 +56,7 @@ const uint16_t  OLED_Color_Magenta      = 0xF81F;
 const uint16_t  OLED_Color_Yellow       = 0xFFE0;
 const uint16_t  OLED_Color_White        = 0xFFFF;
 
-// The colors we actually want to use
-uint16_t        OLED_Text_Color         = OLED_Color_White;
-uint16_t        OLED_Backround_Color    = OLED_Color_Black;
-
 // declare the display
-
 Adafruit_SSD1351 oled =
     Adafruit_SSD1351(
         SCREEN_WIDTH,
@@ -63,24 +70,13 @@ Adafruit_SSD1351 oled =
 bool            isDisplayVisible        = false;
 
 
+/********************************* SERVO **********************************************/
 Servo myservo; 
 int pos = 90;
 int increment = -1;
-int lightValue;
-String line;
-String modus;
-char idSaved; 
-bool wasRead;  
 
-char message_buff[100];
 
-const int BUFFER_SIZE = 300;
-
-#define MQTT_MAX_PACKET_SIZE 512
-
-WiFiClient espClient;
-PubSubClient client(espClient);
-
+/************************ START DRAW MESSAGE ******************************************/
 void drawMessage(const String& message) {
   Serial.println("Clearing display");
   oled.fillScreen(OLED_Color_Black);
@@ -95,7 +91,6 @@ void drawMessage(const String& message) {
   // draw the new time value
   oled.print(message);
 }
-
 
 
 /********************************** START CONNECT*****************************************/
@@ -120,6 +115,7 @@ void setup_wifi() {
   Serial.println(WiFi.localIP());
 }
 
+
 /********************************** START CALLBACK*****************************************/
 void callback(char* topic, byte* payload, unsigned int length) {
   Serial.print("Message arrived [");
@@ -134,6 +130,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
   Serial.println(message);
   drawMessage(message);
 }
+
 
 /********************************** START SEND STATE*****************************************/
 void sendState() {
@@ -155,6 +152,7 @@ void sendState() {
   */
 }
 
+
 /********************************** START RECONNECT*****************************************/
 void reconnect() {
   // Loop until we're reconnected
@@ -174,6 +172,8 @@ void reconnect() {
   }
 }
 
+
+/********************************** START SPINSERVO*****************************************/
 void spinServo(){
     myservo.write(pos);      
     delay(50);    // Warte 50ms um den Servo zu drehen
@@ -184,11 +184,15 @@ void spinServo(){
     pos += increment;
 }
 
+
+/********************************** START SETUP*****************************************/
 void setup() {
 
   
   myservo.attach(2);       // Servo an D0
   myservo.write(0);
+
+  pinMode(LS_PIN,  INPUT);
 
   // settling time
   delay(250);
@@ -250,6 +254,8 @@ void setup() {
 
 }
 
+
+/********************************** START LOOP*****************************************/
 void loop() {
 
   ArduinoOTA.handle();
@@ -260,7 +266,12 @@ void loop() {
     setup_wifi();
   }
 
+  float reading = analogRead(LS_PIN) / 1024.0 * 100.0; //Take brightness reading
 
+  Serial.println("The brightness reading is: " + (String)reading);
+  
+  delay(100);
+  
   /*
   while(!wasRead){   
     spinServo();    // Drehe Herz
@@ -272,11 +283,4 @@ void loop() {
     }
   }
   */
-}
-
-/****reset***/
-void software_Reset() // Restarts program from beginning but does not reset the peripherals and registers
-{
-Serial.print("resetting");
-ESP.reset(); 
 }
