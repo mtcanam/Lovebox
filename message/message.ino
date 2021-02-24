@@ -10,6 +10,7 @@
 #include <ArduinoOTA.h>
 #include <EEPROM.h>
 #include <Servo.h>
+#include <stdlib.h>
 #include "credentials.h"
 
 
@@ -21,7 +22,7 @@
 
 /******************************* MQTT **************************************************/
 #define message_topic "lovebox/Message"
-#define MQTT_MAX_PACKET_SIZE 512
+#define status_topic "lovebox/Status"
 
 
 /******************************* WIFI **************************************************/
@@ -83,20 +84,72 @@ int cw = 105;
 bool unopened_message = false;
 
 
+/************************ START PRINT MESSAGE ******************************************/
+void printMessage(const String& message) {
+  //Determine the type of message
+  
+  if (message[0]=='t'){
+    //Text Message
+    Serial.println("Clearing display");
+    oled.fillScreen(OLED_Color_Black);
+    Serial.println("Text Message - Writing to OLED");
+    write_message(message);  
+  }else{
+    //Image Message
+    Serial.println("Image Message - Drawing on OLED");
+    draw_message(message);
+  }
+}
+
+
 /************************ START DRAW MESSAGE ******************************************/
-void drawMessage(const String& message) {
-  Serial.println("Clearing display");
-  oled.fillScreen(OLED_Color_Black);
-    
-  Serial.println("Attempting to draw message");
+void write_message(const String& message) {
   // home the cursor
   oled.setCursor(0,0);
   
   // change the text color to foreground color
   oled.setTextColor(OLED_Color_White);
 
-  // draw the new time value
+  // Write the message
   oled.print(message);
+}
+
+
+/************************ START DRAW MESSAGE ******************************************/
+void draw_message(const String& message) {
+  //First character is the line that we are drawing
+  //To get the full number, we need to check where teh first color code starts
+  int line_number;
+  int offset;
+  if (message[2] == '0' && message[3] == 'x'){
+    offset = 2;
+    line_number = message[0] - 48;
+  }else if(message[3] == '0'){
+    offset = 3;
+    int x = message[0] - 48;
+    int y = message[1] - 48;
+    line_number = 10 * x + y;
+  }else{
+    offset = 4;
+    int x = message[0] - 48;
+    int y = message[1] - 48;
+    int z = message[2] - 48;
+    line_number = x * 100 + y * 10 + z;
+  }
+  Serial.println(line_number);
+  if (line_number == 0){
+    Serial.println("Clearing display");
+    oled.fillScreen(OLED_Color_Black);
+  }
+  for(uint16_t i = 0; i < SCREEN_WIDTH; i++){
+    String hex_string = "";
+    for(int j = 0; j < 6; j++){
+      hex_string = hex_string + message[offset+6*i+j]; 
+    }
+    //Serial.println(hex_string);
+    int16_t pixel_color = strtol(hex_string.c_str(), NULL, 0);
+    oled.drawPixel(line_number, i, pixel_color);  
+  }
 }
 
 
@@ -155,39 +208,27 @@ void setup_ota() {
 void callback(char* topic, byte* payload, unsigned int length) {
   Serial.print("Message arrived [");
   Serial.print(topic);
-  Serial.print("] ");
+  Serial.print("]");
 
   char message[length + 1];
   for (int i = 0; i < length; i++) {
     message[i] = (char)payload[i];
   }
   message[length] = '\0';
-  Serial.println(message);
+  Serial.println(message[0]);
   unopened_message = true;
   EEPROM.put(144, unopened_message);
-  drawMessage(message);
+  printMessage(message);
 }
 
 
 /********************************** START SEND STATE*****************************************/
 void sendState() {
-  //May want to add this in the future to publish a message when the box is opened.
-  /*
-  StaticJsonBuffer<BUFFER_SIZE> jsonBuffer;
-
-  JsonObject& root = jsonBuffer.createObject();
-
-  root["humidity"] = (String)humValue;
-  root["motion"] = (String)motionStatus;
-  root["temperature"] = (String)tempValue;
-  root["heatIndex"] = (String)dht.computeHeatIndex(tempValue, humValue, IsFahrenheit);
-
-  char buffer[root.measureLength() + 1];
-  root.printTo(buffer, sizeof(buffer));
-
-  Serial.println(buffer);
-  client.publish(light_state_topic, buffer, true);
-  */
+  const char* status_message = "Message has been opened";
+  if (unopened_message){
+    status_message = "Message has not been opened";
+  }
+  client.publish(status_topic, status_message);
 }
 
 
@@ -301,7 +342,6 @@ void setup() {
   EEPROM.begin(512);
   EEPROM.get(144, unopened_message);
   Serial.println("Setting up EEPROM with a starting value of " + (String)unopened_message);
-  
 }
 
 
@@ -317,7 +357,7 @@ void loop() {
   if (WiFi.status() != WL_CONNECTED) {
     setup_wifi();
   }
-
+  /*
   while (unopened_message){
     //While there is an unopened message, spin the servo and check the light sensor
     spin_servo();
@@ -331,6 +371,6 @@ void loop() {
       EEPROM.put(144, unopened_message);
     }
   }
-  
+  */ 
   delay(100);
 }
