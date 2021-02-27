@@ -11,6 +11,7 @@
 #include <EEPROM.h>
 #include <Servo.h>
 #include <stdlib.h>
+#include <arduino-timer.h>
 #include "credentials.h"
 
 
@@ -69,29 +70,38 @@ Adafruit_SSD1351 oled =
      );
 // assume the display is off until configured in setup()
 bool            isDisplayVisible        = false;
+//Initialize a timer
+auto timer = timer_create_default();
 
 
 /********************************* SERVO **********************************************/
 Servo myservo; 
-int startpos = 90;
-int pos = 90;
+int startpos = 105;
+int pos = 105;
 int increment = -1;
-int ccw = 75;
-int cw = 105; 
+int ccw = 90;
+int cw = 120; 
 
 
 /********************************* MESSAGE ********************************************/
 bool unopened_message = false;
+bool viewing_message = false;
+
+
+/*************************** START CLEAR SCREEN ***************************************/
+void clear_screen(){
+  Serial.println("Clearing display");
+  oled.fillScreen(OLED_Color_Black);
+}
 
 
 /************************ START PRINT MESSAGE ******************************************/
-void printMessage(const String& message) {
+void print_message(const String& message) {
   //Determine the type of message
   
   if (message[0]=='t'){
     //Text Message
-    Serial.println("Clearing display");
-    oled.fillScreen(OLED_Color_Black);
+    clear_screen();
     Serial.println("Text Message - Writing to OLED");
     write_message(message);  
   }else{
@@ -102,7 +112,7 @@ void printMessage(const String& message) {
 }
 
 
-/************************ START DRAW MESSAGE ******************************************/
+/************************ START WRITE MESSAGE ******************************************/
 void write_message(const String& message) {
   // home the cursor
   oled.setCursor(0,0);
@@ -112,6 +122,9 @@ void write_message(const String& message) {
 
   // Write the message
   oled.print(message);
+
+  //Toggle on the unopened message boolean to start the notification
+  unopened_message = true;
 }
 
 
@@ -137,16 +150,19 @@ void draw_message(const String& message) {
     line_number = x * 100 + y * 10 + z;
   }
   Serial.println(line_number);
+  //If we are on the first line, clear the display
+  //If we are on the last line, toggle unopened message
   if (line_number == 0){
-    Serial.println("Clearing display");
-    oled.fillScreen(OLED_Color_Black);
+    clear_screen();
+  }else if (line_number == 127){
+    unopened_message = true;
   }
+  
   for(uint16_t i = 0; i < SCREEN_WIDTH; i++){
     String hex_string = "";
     for(int j = 0; j < 6; j++){
       hex_string = hex_string + message[offset+6*i+j]; 
     }
-    //Serial.println(hex_string);
     int16_t pixel_color = strtol(hex_string.c_str(), NULL, 0);
     oled.drawPixel(line_number, i, pixel_color);  
   }
@@ -216,19 +232,14 @@ void callback(char* topic, byte* payload, unsigned int length) {
   }
   message[length] = '\0';
   Serial.println(message[0]);
-  unopened_message = true;
   EEPROM.put(144, unopened_message);
-  printMessage(message);
+  print_message(message);
 }
 
 
 /********************************** START SEND STATE*****************************************/
-void sendState() {
-  const char* status_message = "Message has been opened";
-  if (unopened_message){
-    status_message = "Message has not been opened";
-  }
-  client.publish(status_topic, status_message);
+void send_state(char* message) {
+  client.publish(status_topic, message);
 }
 
 
@@ -269,6 +280,7 @@ void spin_servo(){
 
 /********************************** START RESET SERVO ***************************************/
 void reset_servo(){
+  Serial.println("Servo position resetting");
   //Read the current position from the servo
   int currpos = myservo.read();      
   while (currpos != startpos){
@@ -289,9 +301,49 @@ void reset_servo(){
 /********************************** START GET LIGHT ****************************************/
 float get_light(){
   //Get the light value as a percentage of max
-  float reading = analogRead(LS_PIN) / 1024.0 * 100.0;
+  float reading = analogRead(LS_PIN);
   return reading;
 }
+
+
+/********************************** START BOX OPENED ***************************************/
+void box_opened(){
+  //this function is run when the light sensor picks up the box being opened after a message is received
+  Serial.println("Box Opened!");
+  send_state("Box Opened");
+  message_read();
+  viewing_message = true;
+}
+
+
+/********************************** START MESSAGE READ ***************************************/
+void message_read(){
+  reset_servo();
+  Serial.println("Servo position reset");
+  unopened_message = false;
+  EEPROM.put(144, unopened_message);
+}
+
+
+/********************************** START BOX OPENED ***************************************/
+void box_closed(){
+  //this function is run when the light sensor picks up the box being closed after a message is viewed
+  Serial.println("Box Closed!");
+  send_state("Box Closed");
+  viewing_message = false;
+  clear_screen();
+}
+
+
+/********************************** START AUTO OFF ****************************************/
+bool auto_off(void *) {
+  Serial.println("Screen automatically cleared");
+  clear_screen();
+  send_state("Screen automatically cleared");
+  message_read();
+  return false;
+}
+
 
 
 /********************************** START SETUP*****************************************/
@@ -302,10 +354,9 @@ void setup() {
   delay(10);
   Serial.println("Starting Node named " + String(SENSORNAME));
 
-
   //Set up the servo
   myservo.attach(2);
-  myservo.write(90);
+  myservo.write(startpos);
 
   //Set up the light sensor
   pinMode(LS_PIN,  INPUT);
@@ -340,7 +391,7 @@ void setup() {
 
   //Set up EEPROM to maintain values when powered off
   EEPROM.begin(512);
-  EEPROM.get(144, unopened_message);
+  EEPROM.put(144, unopened_message);
   Serial.println("Setting up EEPROM with a starting value of " + (String)unopened_message);
 }
 
@@ -351,26 +402,39 @@ void loop() {
   ArduinoOTA.handle();
 
   //For MQTT
+  reconnect();
   client.loop();
 
   //Make sure WiFi is connected
   if (WiFi.status() != WL_CONNECTED) {
     setup_wifi();
   }
-  /*
+
   while (unopened_message){
     //While there is an unopened message, spin the servo and check the light sensor
     spin_servo();
     float lightval = get_light();
-    if(lightval > 5.0){
-      //Box was opened. 
-      
-      Serial.println("Box Opened!");
-      reset_servo();
-      unopened_message = false;
-      EEPROM.put(144, unopened_message);
+    //If the timer does not already exist, start one, and wait for 20 minutes.
+    //If we are still in the loop at that point, just turn off the screen and delete the message.
+    if (timer.empty()){
+      timer.in(1200000, auto_off);
     }
+    if(lightval > 70.0){
+      //Box was opened. 
+      box_opened();
+    }
+    timer.tick();
+    yield();
   }
-  */ 
+
+  while (viewing_message){
+    //While the box is open, keep the image on the screen and look for light levels
+    float lightval = get_light();
+    if(lightval < 40.0){
+      //Box was closed. 
+      box_closed();
+    }
+    yield();
+  }
   delay(100);
 }
