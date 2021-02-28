@@ -34,7 +34,8 @@ PubSubClient client(espClient);
 /******************************* LIGHT SENSOR  *****************************************/
 #define LS_PIN A0
 #define POWER 4
-
+float lowLight = 10.0;
+float highLight = 20.0;
 
 /********************************* SCREEN **********************************************/
 // Screen dimensions
@@ -302,6 +303,7 @@ void reset_servo(){
 float get_light(){
   //Get the light value as a percentage of max
   float reading = analogRead(LS_PIN);
+  Serial.println((String)reading);
   return reading;
 }
 
@@ -419,7 +421,7 @@ void loop() {
     if (timer.empty()){
       timer.in(1200000, auto_off);
     }
-    if(lightval > 70.0){
+    if(lightval > highLight){
       //Box was opened. 
       box_opened();
     }
@@ -430,7 +432,7 @@ void loop() {
   while (viewing_message){
     //While the box is open, keep the image on the screen and look for light levels
     float lightval = get_light();
-    if(lightval < 40.0){
+    if(lightval < lowLight){
       //Box was closed. 
       box_closed();
     }
