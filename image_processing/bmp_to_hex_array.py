@@ -36,6 +36,7 @@ def publish_output_files(client, img_array):
         with open("../image_codes/output" + str(i) + ".txt", "r") as text_file:
             text_str = text_file.read()
         client.publish("lovebox/Message", payload=text_str, qos=0, retain=False)
+        time.sleep(0.1);
 
 
 if __name__ == '__main__':
