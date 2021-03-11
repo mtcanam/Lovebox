@@ -1,6 +1,6 @@
 Lovebox
 ===
-Forked project to create a lovebox for my girlfriend for Valentine's day!.
+Forked project to create a lovebox for my girlfriend for Valentine's day!
 
 ## Composition 
 Bit different than the original design. Parts were not soldered together, they were simply glued in place into a larger box. Otherwise, as below.
